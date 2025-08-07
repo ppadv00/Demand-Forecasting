@@ -42,7 +42,7 @@ st.markdown("""
         text-shadow: 0 0 5px rgba(0, 255, 65, 0.3) !important;
     }
 
-    /* Colore del testo generale */
+    /* Testo generale */
     p, .stText, .stMarkdown, label {
         color: var(--textColor, #e0e0e0) !important;
     }
@@ -72,49 +72,19 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(204, 102, 255, 0.5) !important;
     }
 
-    /* Stile per la tabella (st.dataframe) */
-    .stDataFrame {
-        background-color: var(--terminal-bg, #0a0a0a) !important;
-        border: 1px solid var(--terminal-accent, #2a2a2a) !important;
-        border-radius: 8px !important;
-        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3) !important;
+    /* Slider */
+    .stSlider .st-bd { /* Track */
+        background: var(--terminal-accent, #2a2a2a) !important;
     }
-    .stDataFrame th {
-        background-color: var(--terminal-accent, #2a2a2a) !important;
-        color: var(--terminal-green, #00ff41) !important;
-        font-family: 'JetBrains Mono', monospace !important;
+    .stSlider .st-be { /* Fill */
+        background: var(--terminal-green, #00ff41) !important;
     }
-    .stDataFrame td {
-        color: var(--textColor, #e0e0e0) !important;
+    .stSlider .st-bf { /* Thumb */
+        background: var(--terminal-blue, #0066ff) !important;
+        border: 2px solid var(--terminal-green, #00ff41) !important;
     }
 
-    /* Stili per le box di avviso (info, warning, success) */
-    .stAlert {
-        background-color: var(--terminal-accent, #2a2a2a) !important;
-        border-left: 5px solid var(--terminal-blue, #0066ff) !important;
-        color: var(--textColor, #e0e0e0) !important;
-    }
-    .stAlert.success { border-left-color: var(--terminal-green, #00ff41) !important; }
-    .stAlert.warning { border-left-color: var(--terminal-orange, #ff6600) !important; }
-    .stAlert.info { border-left-color: var(--terminal-blue, #0066ff) !important; }
-
-    /* Stili per testo specifico (strong, em) */
-    strong {
-        color: var(--terminal-orange, #ff6600) !important;
-    }
-    em {
-        color: var(--terminal-purple, #cc66ff) !important;
-    }
-
-    /* Stili per lo spinner di caricamento */
-    .stSpinner > div > div {
-        color: var(--terminal-green, #00ff41) !important;
-    }
-    .stSpinner > div > div > div {
-        border-top-color: var(--terminal-green, #00ff41) !important;
-    }
-
-    /* Stili per il Selectbox */
+    /* Selectbox */
     .stSelectbox .st-bb { /* Dropdown arrow */
         color: var(--terminal-green, #00ff41) !important;
     }
@@ -133,16 +103,46 @@ st.markdown("""
         color: var(--terminal-green, #00ff41) !important;
     }
 
-    /* Stili per lo Slider */
-    .stSlider .st-bd { /* Track */
-        background: var(--terminal-accent, #2a2a2a) !important;
+    /* DataFrame (tabella risultati) */
+    .stDataFrame {
+        background-color: var(--terminal-bg, #0a0a0a) !important;
+        border: 1px solid var(--terminal-accent, #2a2a2a) !important;
+        border-radius: 8px !important;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3) !important;
     }
-    .stSlider .st-be { /* Fill */
-        background: var(--terminal-green, #00ff41) !important;
+    .stDataFrame th {
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        color: var(--terminal-green, #00ff41) !important;
+        font-family: 'JetBrains Mono', monospace !important;
     }
-    .stSlider .st-bf { /* Thumb */
-        background: var(--terminal-blue, #0066ff) !important;
-        border: 2px solid var(--terminal-green, #00ff41) !important;
+    .stDataFrame td {
+        color: var(--textColor, #e0e0e0) !important;
+    }
+
+    /* Spinner di caricamento */
+    .stSpinner > div > div {
+        color: var(--terminal-green, #00ff41) !important;
+    }
+    .stSpinner > div > div > div {
+        border-top-color: var(--terminal-green, #00ff41) !important;
+    }
+
+    /* Box di avviso (info, warning, success) */
+    .stAlert {
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        border-left: 5px solid var(--terminal-blue, #0066ff) !important;
+        color: var(--textColor, #e0e0e0) !important;
+    }
+    .stAlert.success { border-left-color: var(--terminal-green, #00ff41) !important; }
+    .stAlert.warning { border-left-color: var(--terminal-orange, #ff6600) !important; }
+    .stAlert.info { border-left-color: var(--terminal-blue, #0066ff) !important; }
+
+    /* Stili per testo specifico (strong, em) */
+    strong {
+        color: var(--terminal-orange, #ff6600) !important;
+    }
+    em {
+        color: var(--terminal-purple, #cc66ff) !important;
     }
 
 </style>
@@ -318,33 +318,53 @@ with st.sidebar:
     
     selected_product_name = st.selectbox(
         "Seleziona il Prodotto da Analizzare",
-        [f"Prodotto_{i}" for i in range(1, 6)]
+        [f"Prodotto_{i}" for i in range(1, 6)],
+        key="selected_product_sidebar" # Aggiunto key per tracciare il cambiamento
     )
     
-    # Imposta un valore minimo per test_days per garantire dati sufficienti per il training
-    # Ad esempio, se hai 730 giorni di dati, e vuoi almeno 365 giorni per il training,
-    # il massimo test_days sarà 730 - 365 = 365.
-    # Il dataset simulato ha 730 giorni.
-    # Assicurati che ci siano almeno 100 giorni per il training.
     max_test_days = 730 - 100 
-    test_days = st.slider("Numero di giorni da prevedere (Test Set)", 30, max_test_days, 30)
-    
+    test_days = st.slider("Numero di giorni da prevedere (Test Set)", 30, max_test_days, 30, key="test_days_sidebar") # Aggiunto key
+
     st.markdown("---")
     st.header("📊 Parametri Economici")
-    unit_margin = st.number_input("Margine per Unità Venduta (€)", value=10.0, step=0.5)
-    overstock_daily_cost = st.number_input("Costo Mantenimento Magazzino (€/unità/giorno)", value=0.5, step=0.1)
+    unit_margin = st.number_input("Margine per Unità Venduta (€)", value=10.0, step=0.5, key="unit_margin_sidebar") # Aggiunto key
+    overstock_daily_cost = st.number_input("Costo Mantenimento Magazzino (€/unità/giorno)", value=0.5, step=0.1, key="overstock_cost_sidebar") # Aggiunto key
 
-    # Bottone di avvio
+    # Bottone di avvio analisi
     st.markdown("---")
-    if st.button("Avvia Analisi"):
-        st.session_state.run_analysis = True
+    if st.button("Avvia Analisi", key="run_analysis_button"):
+        st.session_state.run_analysis_triggered = True
+        # Memorizza i parametri correnti per il confronto futuro
+        st.session_state.last_selected_product = selected_product_name
+        st.session_state.last_test_days = test_days
     
-    if 'run_analysis' not in st.session_state:
-        st.session_state.run_analysis = False
+    # Inizializza lo stato se non esiste
+    if 'run_analysis_triggered' not in st.session_state:
+        st.session_state.run_analysis_triggered = False
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = None
+    if 'last_selected_product' not in st.session_state:
+        st.session_state.last_selected_product = None
+    if 'last_test_days' not in st.session_state:
+        st.session_state.last_test_days = None
+
+# Logica per determinare se l'analisi deve essere eseguita o riutilizzata
+run_analysis_now = False
+if st.session_state.run_analysis_triggered:
+    # Se il bottone è stato cliccato, esegui l'analisi
+    run_analysis_now = True
+    st.session_state.run_analysis_triggered = False # Reset per evitare re-run non voluti
+
+# Se i parametri chiave sono cambiati, forza un re-run dell'analisi al prossimo click
+if (st.session_state.last_selected_product != selected_product_name or 
+    st.session_state.last_test_days != test_days):
+    st.session_state.analysis_results = None # Invalida i risultati precedenti se i parametri chiave cambiano
 
 
-if st.session_state.run_analysis:
-    st.info("Avvio dell'analisi... potrebbe volerci qualche secondo.")
+# Esegui l'analisi solo se è stata triggerata o se non ci sono risultati in session_state
+if run_analysis_now or st.session_state.analysis_results is None:
+    if run_analysis_now: # Mostra lo spinner solo se si sta effettivamente eseguendo l'analisi
+        st.info("Avvio dell'analisi... potrebbe volerci qualche secondo.")
     
     # Caricamento e preparazione dei dati
     df = generate_simulated_dataset()
@@ -353,7 +373,7 @@ if st.session_state.run_analysis:
     # Split training/testing
     if df_single.empty:
         st.error("Il dataset per il prodotto selezionato è vuoto. Controlla la selezione del prodotto o il dataset.")
-        st.session_state.run_analysis = False
+        st.session_state.analysis_results = None
     else:
         train_end_date = df_single.index.max() - pd.Timedelta(days=test_days)
         
@@ -362,7 +382,7 @@ if st.session_state.run_analysis:
 
         if df_train_single.empty or df_test_single.empty:
             st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare il 'Numero di giorni da prevedere' o controlla la lunghezza totale del dataset simulato.")
-            st.session_state.run_analysis = False
+            st.session_state.analysis_results = None
         else:
             # Feature Engineering
             df_with_features = create_features(df_single)
@@ -374,7 +394,7 @@ if st.session_state.run_analysis:
             # Assicurati che i dataframe con features non siano vuoti dopo il dropna
             if df_train_with_features.empty or df_test_with_features.empty:
                 st.error("I dataset di training o di test con features sono vuoti. Questo può accadere se ci sono troppi NaN all'inizio della serie dopo la creazione delle features. Prova a usare un periodo di training più lungo o un dataset più grande.")
-                st.session_state.run_analysis = False
+                st.session_state.analysis_results = None
             else:
                 features_to_use = [
                     'giorno_della_settimana', 'settimana_dell_anno', 'mese', 'is_weekend', 
@@ -402,6 +422,7 @@ if st.session_state.run_analysis:
                                 model_name, df_train_single, df_test_single, [] # Non usano features esplicite
                             )
 
+                        # Calcolo impatto economico per il modello
                         total_cost, _, _ = calculate_business_impact(
                             predictions, df_test_single['quantità_vendute'].values, unit_margin, overstock_daily_cost
                         )
@@ -421,95 +442,132 @@ if st.session_state.run_analysis:
                 
                 st.success("Analisi completata!")
 
-                # --- SEZIONE RISULTATI E GRAFICI ---
+                # Salva i risultati nello stato della sessione
+                st.session_state.analysis_results = {
+                    "results_df": results_df,
+                    "predictions_dict": predictions_dict,
+                    "prophet_forecast_dict": prophet_forecast_dict,
+                    "df_test_single": df_test_single,
+                    "df_train_single": df_train_single, # Necessario per decomposizione
+                    "selected_product_name": selected_product_name, # Salva per il titolo del grafico
+                    "unit_margin": unit_margin, # Salva parametri economici
+                    "overstock_daily_cost": overstock_daily_cost
+                }
+    
+# Se ci sono risultati nell'analysis_results, visualizzali
+if st.session_state.analysis_results is not None:
+    results_df = st.session_state.analysis_results["results_df"]
+    predictions_dict = st.session_state.analysis_results["predictions_dict"]
+    prophet_forecast_dict = st.session_state.analysis_results["prophet_forecast_dict"]
+    df_test_single = st.session_state.analysis_results["df_test_single"]
+    df_train_single = st.session_state.analysis_results["df_train_single"]
+    selected_product_name_display = st.session_state.analysis_results["selected_product_name"]
+    current_unit_margin = unit_margin # Usa i valori correnti dei widget per i calcoli economici
+    current_overstock_daily_cost = overstock_daily_cost
+
+    # Ricalcola i costi economici con i parametri correnti (se sono stati cambiati dopo il run)
+    updated_results = []
+    for index, row in results_df.iterrows():
+        model_name = index
+        predictions = predictions_dict[model_name]
+        total_cost, _, _ = calculate_business_impact(
+            predictions, df_test_single['quantità_vendute'].values, current_unit_margin, current_overstock_daily_cost
+        )
+        row_dict = row.to_dict()
+        row_dict["Modello"] = model_name # Aggiungi la colonna Modello per la ri-creazione del DF
+        row_dict["Costo Totale (€)"] = total_cost
+        updated_results.append(row_dict)
+    
+    results_df_display = pd.DataFrame(updated_results).set_index("Modello")
+
+
+    st.header("🔍 Confronto Risultati")
+    st.markdown("Questa tabella riassume le performance di ogni modello in termini di metriche statistiche e costo economico.")
+    st.dataframe(results_df_display.style.background_gradient(cmap='viridis', subset=['RMSE', 'MAE', 'Costo Totale (€)'], axis=0).highlight_max(axis=0, subset=['R2'], color='green'))
+
+    st.markdown("---")
+
+    st.header("📊 Previsioni vs. Valori Reali")
+    st.markdown("Questo grafico visualizza il confronto tra le vendite reali e le previsioni di ogni modello nel periodo di test.")
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_test_single.index, y=df_test_single['quantità_vendute'], mode='lines', name='Valori Reali', line=dict(color='#0066ff', width=3)))
+    
+    colors = ['#ff6b9d', '#c3e88d', '#fab387', '#89dceb', '#cc66ff']
+    
+    for i, (model_name, predictions) in enumerate(predictions_dict.items()):
+        fig.add_trace(go.Scatter(x=df_test_single.index, y=predictions, mode='lines', name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
+
+    if 'Prophet' in prophet_forecast_dict:
+        prophet_forecast = prophet_forecast_dict['Prophet']
+        fig.add_trace(go.Scatter(
+            x=df_test_single.index,
+            y=prophet_forecast['yhat_lower'].values,
+            line=dict(width=0),
+            mode='lines',
+            marker=dict(color="#444"),
+            showlegend=False
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_test_single.index,
+            y=prophet_forecast['yhat_upper'].values,
+            fill='tonexty',
+            fillcolor='rgba(108, 112, 134, 0.2)',
+            line=dict(width=0),
+            mode='lines',
+            marker=dict(color="#444"),
+            name='Intervallo di Confidenza Prophet'
+        ))
+
+    fig.update_layout(
+        title_text=f"Previsioni vs. Valori Reali per {selected_product_name_display}",
+        template="plotly_dark",
+        xaxis_title="Data",
+        yaxis_title="Quantità Vendute",
+        font=dict(color='#e0e0e0'),
+        legend=dict(x=1.02, y=1, bgcolor='rgba(42, 42, 42, 0.5)', bordercolor='#00ff41', borderwidth=1),
+        plot_bgcolor='rgba(10, 10, 10, 0.5)',
+        paper_bgcolor='rgba(10, 10, 10, 0.5)',
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    st.header("📊 Decomposizione della Serie Storica")
+    st.markdown("Questa analisi scompone la serie storica del training set in Trend, Stagionalità e Residuo.")
+    
+    try:
+        if len(df_train_single) < 2 * 7: # Richiede almeno due cicli completi per period=7
+            st.warning("Dati di training insufficienti per una decomposizione stagionale significativa (richiede almeno 14 giorni).")
+        else:
+            result = seasonal_decompose(df_train_single['quantità_vendute'], model='additive', period=7)
+            
+            fig, ax = plt.subplots(4, 1, figsize=(15, 12), sharex=True)
+            fig.patch.set_facecolor('rgba(0,0,0,0)') # Sfondo trasparente per Matplotlib
+            
+            # Plot styling
+            styles = [
+                {'color': '#0066ff', 'label': 'Originale'},
+                {'color': '#ff6600', 'label': 'Trend'},
+                {'color': '#cc66ff', 'label': 'Stagionalità'},
+                {'color': '#00ff41', 'label': 'Residuo'}
+            ]
+            
+            for i, (plot_data, style) in enumerate(zip([result.observed, result.trend, result.seasonal, result.resid], styles)):
+                plot_data.plot(ax=ax[i], legend=False, color=style['color'])
+                ax[i].set_ylabel(style['label'], fontsize=12, color=style['color'])
+                ax[i].tick_params(axis='x', colors='#e0e0e0')
+                ax[i].tick_params(axis='y', colors='#e0e0e0')
+                ax[i].spines['top'].set_visible(False)
+                ax[i].spines['right'].set_visible(False)
+                ax[i].spines['left'].set_color('#3a3a3a')
+                ax[i].spines['bottom'].set_color('#3a3a3a')
+                ax[i].set_facecolor('rgba(10, 10, 10, 0.5)') # Sfondo del grafico interno
+                ax[i].set_xlabel("Data", color='#e0e0e0')
                 
-                st.header("🔍 Confronto Risultati")
-                st.markdown("Questa tabella riassume le performance di ogni modello in termini di metriche statistiche e costo economico.")
-                st.dataframe(results_df.style.background_gradient(cmap='viridis', subset=['RMSE', 'MAE', 'Costo Totale (€)'], axis=0).highlight_max(axis=0, subset=['R2'], color='green'))
-
-                st.markdown("---")
-
-                st.header("📊 Previsioni vs. Valori Reali")
-                st.markdown("Questo grafico visualizza il confronto tra le vendite reali e le previsioni di ogni modello nel periodo di test.")
-                
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df_test_single.index, y=df_test_single['quantità_vendute'], mode='lines', name='Valori Reali', line=dict(color='#0066ff', width=3)))
-                
-                colors = ['#ff6b9d', '#c3e88d', '#fab387', '#89dceb', '#cc66ff']
-                
-                for i, (model_name, predictions) in enumerate(predictions_dict.items()):
-                    fig.add_trace(go.Scatter(x=df_test_single.index, y=predictions, mode='lines', name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
-
-                if 'Prophet' in prophet_forecast_dict:
-                    prophet_forecast = prophet_forecast_dict['Prophet']
-                    fig.add_trace(go.Scatter(
-                        x=df_test_single.index,
-                        y=prophet_forecast['yhat_lower'].values,
-                        line=dict(width=0),
-                        mode='lines',
-                        marker=dict(color="#444"),
-                        showlegend=False
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=df_test_single.index,
-                        y=prophet_forecast['yhat_upper'].values,
-                        fill='tonexty',
-                        fillcolor='rgba(108, 112, 134, 0.2)',
-                        line=dict(width=0),
-                        mode='lines',
-                        marker=dict(color="#444"),
-                        name='Intervallo di Confidenza Prophet'
-                    ))
-
-                fig.update_layout(
-                    title_text=f"Previsioni vs. Valori Reali per {selected_product_name}",
-                    template="plotly_dark",
-                    xaxis_title="Data",
-                    yaxis_title="Quantità Vendute",
-                    font=dict(color='#e0e0e0'),
-                    legend=dict(x=1.02, y=1, bgcolor='rgba(42, 42, 42, 0.5)', bordercolor='#00ff41', borderwidth=1),
-                    plot_bgcolor='rgba(10, 10, 10, 0.5)',
-                    paper_bgcolor='rgba(10, 10, 10, 0.5)',
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-                st.markdown("---")
-
-                st.header("📊 Decomposizione della Serie Storica")
-                st.markdown("Questa analisi scompone la serie storica del training set in Trend, Stagionalità e Residuo.")
-                
-                try:
-                    if len(df_train_single) < 2 * 7: # Richiede almeno due cicli completi per period=7
-                        st.warning("Dati di training insufficienti per una decomposizione stagionale significativa (richiede almeno 14 giorni).")
-                    else:
-                        result = seasonal_decompose(df_train_single['quantità_vendute'], model='additive', period=7)
-                        
-                        fig, ax = plt.subplots(4, 1, figsize=(15, 12), sharex=True)
-                        fig.patch.set_facecolor('rgba(0,0,0,0)') # Sfondo trasparente per Matplotlib
-                        
-                        # Plot styling
-                        styles = [
-                            {'color': '#0066ff', 'label': 'Originale'},
-                            {'color': '#ff6600', 'label': 'Trend'},
-                            {'color': '#cc66ff', 'label': 'Stagionalità'},
-                            {'color': '#00ff41', 'label': 'Residuo'}
-                        ]
-                        
-                        for i, (plot_data, style) in enumerate(zip([result.observed, result.trend, result.seasonal, result.resid], styles)):
-                            plot_data.plot(ax=ax[i], legend=False, color=style['color'])
-                            ax[i].set_ylabel(style['label'], fontsize=12, color=style['color'])
-                            ax[i].tick_params(axis='x', colors='#e0e0e0')
-                            ax[i].tick_params(axis='y', colors='#e0e0e0')
-                            ax[i].spines['top'].set_visible(False)
-                            ax[i].spines['right'].set_visible(False)
-                            ax[i].spines['left'].set_color('#3a3a3a')
-                            ax[i].spines['bottom'].set_color('#3a3a3a')
-                            ax[i].set_facecolor('rgba(10, 10, 10, 0.5)') # Sfondo del grafico interno
-                            ax[i].set_xlabel("Data", color='#e0e0e0')
-                            
-                        fig.tight_layout()
-                        st.pyplot(fig)
-                except Exception as e:
-                    st.error(f"Errore durante la decomposizione della serie storica: `{e}`. Controlla che i dati siano sufficienti e non contengano valori non numerici.")
+            fig.tight_layout()
+            st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Errore durante la decomposizione della serie storica: `{e}`. Controlla che i dati siano sufficienti e non contengano valori non numerici.")
 else:
     st.info("Clicca 'Avvia Analisi' nella sidebar per iniziare.")
