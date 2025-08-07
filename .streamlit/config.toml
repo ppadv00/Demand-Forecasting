@@ -1,13 +1,13 @@
 # .streamlit/config.toml
 
 [theme]
-base="dark" # Tema di base scuro
-primaryColor="#0066ff" # Colore blu per gli elementi primari (es. bottoni, slider)
-backgroundColor="#0a0a0a" # Sfondo principale (nero profondo)
-secondaryBackgroundColor="#1a1a1a" # Sfondo per sidebar e sezioni (nero leggermente più chiaro)
-textColor="#e0e0e0" # Colore del testo principale (grigio chiaro)
+base="light" # Tema di base chiaro
+primaryColor="#4CAF50" # Un bel verde per gli elementi primari (es. bottoni, slider)
+backgroundColor="#FFFFFF" # Sfondo principale (bianco)
+secondaryBackgroundColor="#F0F2F6" # Sfondo per sidebar e sezioni (grigio chiaro)
+textColor="#333333" # Colore del testo principale (grigio scuro)
 font="sans serif" # Font di base (Streamlit cercherà di usare Inter se disponibile)
 
-# Configurazione per i grafici Matplotlib (per il tema scuro)
+# Configurazione per i grafici Matplotlib (per il tema chiaro)
 [matplotlib]
-use_dark_background=true
+use_dark_background=false
