@@ -15,36 +15,159 @@ from pathlib import Path
 import os
 import datetime
 
-# --- CONFIGURAZIONE PAGINA STREAMLIT ---
+# --- CONFIGURAZIONE PAGINA STREAMLIT E STILI CSS PERSONALIZZATI ---
 st.set_page_config(layout="wide", page_title="Demand Forecasting Dashboard", page_icon="📈")
+
 st.markdown("""
+<head>
+    <!-- JetBrains Mono font for that terminal feel -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
 <style>
-    .reportview-container .main .block-container{
-        padding-top: 2rem;
-        padding-right: 2rem;
-        padding-left: 2rem;
-        padding-bottom: 2rem;
+    :root {
+        --terminal-green: #00ff41;
+        --terminal-blue: #0066ff;
+        --terminal-orange: #ff6600;
+        --terminal-purple: #cc66ff;
+        --terminal-bg: #0a0a0a;
+        --terminal-secondary: #1a1a1a;
+        --terminal-accent: #2a2a2a;
     }
-    h1, h2, h3 {
-        color: #00ff41;
+    
+    body {
+        font-family: 'Inter', sans-serif !important;
+        background: linear-gradient(135deg, var(--terminal-bg) 0%, #111 50%, var(--terminal-secondary) 100%) !important;
+        background-attachment: fixed !important;
+        color: #e0e0e0 !important;
+        line-height: 1.7 !important;
+        min-height: 100vh !important;
     }
-    p, .stText {
-        color: #e0e0e0;
+    
+    .mono {
+        font-family: 'JetBrains Mono', monospace !important;
     }
-    .stSelectbox label, .stSlider label {
-        color: #89dceb;
+
+    /* Override Streamlit's main container padding */
+    .stApp {
+        padding-top: 2rem !important;
+        padding-right: 2rem !important;
+        padding-left: 2rem !important;
+        padding-bottom: 2rem !important;
     }
+
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'JetBrains Mono', monospace !important;
+        color: var(--terminal-green) !important;
+        text-shadow: 0 0 5px rgba(0, 255, 65, 0.3) !important;
+    }
+
+    /* Text */
+    p, .stText, .stMarkdown, label {
+        color: #e0e0e0 !important;
+    }
+
+    /* Sidebar */
+    .stSidebar {
+        background: var(--terminal-secondary) !important;
+        border-right: 1px solid var(--terminal-accent) !important;
+        color: #e0e0e0 !important;
+    }
+    .stSidebar .stSelectbox label, .stSidebar .stSlider label, .stSidebar h2 {
+        color: var(--terminal-blue) !important;
+    }
+
+    /* Buttons */
     .stButton>button {
-        background-color: #0066ff;
-        color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 5px;
-        transition: all 0.2s ease-in-out;
+        background-color: var(--terminal-blue) !important;
+        color: white !important;
+        border: 1px solid var(--terminal-green) !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease-in-out !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: bold !important;
+        box-shadow: 0 0 10px rgba(0, 102, 255, 0.3) !important;
     }
     .stButton>button:hover {
-        background-color: #0052cc;
-        transform: translateY(-2px);
+        background-color: var(--terminal-purple) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 0 15px rgba(204, 102, 255, 0.5) !important;
+    }
+
+    /* Sliders */
+    .stSlider .st-bd { /* Track */
+        background: var(--terminal-accent) !important;
+    }
+    .stSlider .st-be { /* Fill */
+        background: var(--terminal-green) !important;
+    }
+    .stSlider .st-bf { /* Thumb */
+        background: var(--terminal-blue) !important;
+        border: 2px solid var(--terminal-green) !important;
+    }
+
+    /* Selectbox */
+    .stSelectbox .st-bb { /* Dropdown arrow */
+        color: var(--terminal-green) !important;
+    }
+    .stSelectbox .st-cc { /* Selected value text */
+        color: #e0e0e0 !important;
+        background-color: var(--terminal-accent) !important;
+        border: 1px solid var(--terminal-green) !important;
+    }
+    .stSelectbox .st-cd { /* Dropdown options */
+        background-color: var(--terminal-secondary) !important;
+        color: #e0e0e0 !important;
+        border: 1px solid var(--terminal-green) !important;
+    }
+    .stSelectbox .st-cd:hover {
+        background-color: var(--terminal-accent) !important;
+        color: var(--terminal-green) !important;
+    }
+
+    /* Dataframe */
+    .stDataFrame {
+        background-color: var(--terminal-bg) !important;
+        color: #e0e0e0 !important;
+        border: 1px solid var(--terminal-accent) !important;
+        border-radius: 8px !important;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3) !important;
+    }
+    .stDataFrame th {
+        background-color: var(--terminal-accent) !important;
+        color: var(--terminal-green) !important;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+    .stDataFrame td {
+        color: #e0e0e0 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* Spinner */
+    .stSpinner > div > div {
+        color: var(--terminal-green) !important;
+    }
+    .stSpinner > div > div > div {
+        border-top-color: var(--terminal-green) !important;
+    }
+
+    /* Info/Warning/Success boxes */
+    .stAlert {
+        background-color: var(--terminal-accent) !important;
+        border-left: 5px solid var(--terminal-blue) !important;
+        color: #e0e0e0 !important;
+    }
+    .stAlert.success { border-left-color: var(--terminal-green) !important; }
+    .stAlert.warning { border-left-color: var(--terminal-orange) !important; }
+    .stAlert.info { border-left-color: var(--terminal-blue) !important; }
+
+    /* General text styling */
+    strong {
+        color: var(--terminal-orange) !important;
+    }
+    em {
+        color: var(--terminal-purple) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -73,8 +196,6 @@ def generate_simulated_dataset(num_days=730, num_products=5):
         
         # Eventi speciali (simulati)
         promotions = np.zeros(num_days)
-        # Semplificazione per evitare errori di indice con date_range.get_loc
-        # Consideriamo promozioni fisse per semplicità nel dataset simulato
         promo_days = [30, 90, 180, 270, 360, 450, 540, 630, 720] # Esempio di giorni con promozioni
         for day_idx in promo_days:
             if day_idx < num_days:
@@ -253,14 +374,7 @@ if st.session_state.run_analysis:
     df = generate_simulated_dataset()
     df_single = df[df['nome_prodotto'] == selected_product_name].copy()
     
-    # --- DEBUG: Controlla il dataframe iniziale filtrato ---
-    # st.write("### Debug: df_single (dopo filtro prodotto)")
-    # st.write(df_single.head())
-    # st.write(f"Dimensioni df_single: {df_single.shape}")
-    # st.write(f"Valori NaN in df_single['quantità_vendute']: {df_single['quantità_vendute'].isnull().sum()}")
-
     # Split training/testing
-    # Assicurati che train_end_date sia valido
     if df_single.empty:
         st.error("Il dataset per il prodotto selezionato è vuoto. Controlla la selezione del prodotto o il dataset.")
         st.session_state.run_analysis = False
@@ -270,34 +384,16 @@ if st.session_state.run_analysis:
         df_train_single = df_single.loc[df_single.index <= train_end_date].copy()
         df_test_single = df_single.loc[df_single.index > train_end_date].copy()
 
-        # --- DEBUG: Controlla i dataframe di train/test dopo lo split ---
-        # st.write("### Debug: df_train_single (dopo split)")
-        # st.write(df_train_single.head())
-        # st.write(f"Dimensioni df_train_single: {df_train_single.shape}")
-        # st.write("### Debug: df_test_single (dopo split)")
-        # st.write(df_test_single.head())
-        # st.write(f"Dimensioni df_test_single: {df_test_single.shape}")
-
         if df_train_single.empty or df_test_single.empty:
-            st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare la 'Data di Split' o il 'Numero di giorni da prevedere'.")
+            st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare il 'Numero di giorni da prevedere' o controlla la lunghezza totale del dataset simulato.")
             st.session_state.run_analysis = False
         else:
             # Feature Engineering
-            # Applica feature engineering solo al dataframe completo e poi risplitta
             df_with_features = create_features(df_single)
             
             # Ora risplitta il dataframe con le features
             df_train_with_features = df_with_features.loc[df_with_features.index <= train_end_date].copy()
             df_test_with_features = df_with_features.loc[df_with_features.index > train_end_date].copy()
-
-            # --- DEBUG: Controlla i dataframe con features ---
-            # st.write("### Debug: df_train_with_features")
-            # st.write(df_train_with_features.head())
-            # st.write(f"Dimensioni df_train_with_features: {df_train_with_features.shape}")
-            # st.write("### Debug: df_test_with_features")
-            # st.write(df_test_with_features.head())
-            # st.write(f"Dimensioni df_test_with_features: {df_test_with_features.shape}")
-
 
             # Assicurati che i dataframe con features non siano vuoti dopo il dropna
             if df_train_with_features.empty or df_test_with_features.empty:
@@ -309,7 +405,6 @@ if st.session_state.run_analysis:
                     'vendite_lag_1', 'vendite_lag_7', 'media_mobile_7g'
                 ]
                 # Filtra le features_to_use per assicurarci che esistano nel dataframe
-                # Questo è cruciale se il dataset simulato non crea tutte le colonne che ci aspettiamo
                 available_features = [f for f in features_to_use if f in df_train_with_features.columns]
 
 
