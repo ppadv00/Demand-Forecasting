@@ -20,71 +20,45 @@ st.set_page_config(layout="wide", page_title="Demand Forecasting Dashboard", pag
 
 st.markdown("""
 <head>
-    <!-- JetBrains Mono font for that terminal feel -->
+    <!-- Importazione dei font per assicurare che siano disponibili -->
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <style>
-    /* Definizione delle variabili CSS per il tema terminale */
-    :root {
-        --terminal-green: #00ff41;
-        --terminal-blue: #0066ff;
-        --terminal-orange: #ff6600;
-        --terminal-purple: #cc66ff;
-        --terminal-bg: #0a0a0a;
-        --terminal-secondary: #1a1a1a;
-        --terminal-accent: #2a2a2a;
-    }
-    
-    /* Stili globali per il body e il container principale di Streamlit */
-    html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-    }
+    /* Le variabili CSS sono ora definite in .streamlit/config.toml */
+    /* Qui ci concentriamo su override specifici e dettagli */
 
-    .stApp {
-        background: linear-gradient(135deg, var(--terminal-bg) 0%, #111 50%, var(--terminal-secondary) 100%) !important;
-        background-attachment: fixed !important;
-        color: #e0e0e0 !important;
+    /* Assicurati che il font Inter sia il default per il testo */
+    html, body, .stApp {
         font-family: 'Inter', sans-serif !important;
-        line-height: 1.7 !important;
-        padding-top: 2rem !important;
-        padding-right: 2rem !important;
-        padding-left: 2rem !important;
-        padding-bottom: 2rem !important;
     }
-    
     .mono {
         font-family: 'JetBrains Mono', monospace !important;
     }
 
-    /* Intestazioni */
+    /* Override per i colori e font delle intestazioni */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'JetBrains Mono', monospace !important;
-        color: var(--terminal-green) !important;
+        color: var(--terminal-green, #00ff41) !important; /* Usa la variabile o un fallback */
         text-shadow: 0 0 5px rgba(0, 255, 65, 0.3) !important;
     }
 
-    /* Testo generale */
+    /* Colore del testo generale */
     p, .stText, .stMarkdown, label {
-        color: #e0e0e0 !important;
+        color: var(--textColor, #e0e0e0) !important;
     }
 
-    /* Sidebar */
-    .stSidebar {
-        background: var(--terminal-secondary) !important;
-        border-right: 1px solid var(--terminal-accent) !important;
-        color: #e0e0e0 !important;
-    }
-    .stSidebar .stSelectbox label, .stSidebar .stSlider label, .stSidebar h2 {
-        color: var(--terminal-blue) !important;
+    /* Stile per la riga orizzontale (generata da st.markdown("---")) */
+    hr {
+        border-top: 1px solid var(--terminal-accent, #2a2a2a) !important;
+        margin-top: 1rem !important;
+        margin-bottom: 1rem !important;
     }
 
-    /* Bottoni */
+    /* Stile per i bottoni */
     .stButton>button {
-        background-color: var(--terminal-blue) !important;
+        background-color: var(--primaryColor, #0066ff) !important;
         color: white !important;
-        border: 1px solid var(--terminal-green) !important;
+        border: 1px solid var(--terminal-green, #00ff41) !important;
         padding: 0.75rem 1.5rem !important;
         border-radius: 8px !important;
         transition: all 0.2s ease-in-out !important;
@@ -93,85 +67,84 @@ st.markdown("""
         box-shadow: 0 0 10px rgba(0, 102, 255, 0.3) !important;
     }
     .stButton>button:hover {
-        background-color: var(--terminal-purple) !important;
+        background-color: var(--terminal-purple, #cc66ff) !important;
         transform: translateY(-2px) !important;
         box-shadow: 0 0 15px rgba(204, 102, 255, 0.5) !important;
     }
 
-    /* Slider */
-    .stSlider .st-bd { /* Track */
-        background: var(--terminal-accent) !important;
-    }
-    .stSlider .st-be { /* Fill */
-        background: var(--terminal-green) !important;
-    }
-    .stSlider .st-bf { /* Thumb */
-        background: var(--terminal-blue) !important;
-        border: 2px solid var(--terminal-green) !important;
-    }
-
-    /* Selectbox */
-    .stSelectbox .st-bb { /* Dropdown arrow */
-        color: var(--terminal-green) !important;
-    }
-    .stSelectbox .st-cc { /* Selected value text */
-        color: #e0e0e0 !important;
-        background-color: var(--terminal-accent) !important;
-        border: 1px solid var(--terminal-green) !important;
-    }
-    .stSelectbox .st-cd { /* Dropdown options */
-        background-color: var(--terminal-secondary) !important;
-        color: #e0e0e0 !important;
-        border: 1px solid var(--terminal-green) !important;
-    }
-    .stSelectbox .st-cd:hover {
-        background-color: var(--terminal-accent) !important;
-        color: var(--terminal-green) !important;
-    }
-
-    /* DataFrame (tabella risultati) */
+    /* Stile per la tabella (st.dataframe) */
     .stDataFrame {
-        background-color: var(--terminal-bg) !important;
-        color: #e0e0e0 !important;
-        border: 1px solid var(--terminal-accent) !important;
+        background-color: var(--terminal-bg, #0a0a0a) !important;
+        border: 1px solid var(--terminal-accent, #2a2a2a) !important;
         border-radius: 8px !important;
         box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3) !important;
     }
     .stDataFrame th {
-        background-color: var(--terminal-accent) !important;
-        color: var(--terminal-green) !important;
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        color: var(--terminal-green, #00ff41) !important;
         font-family: 'JetBrains Mono', monospace !important;
     }
     .stDataFrame td {
-        color: #e0e0e0 !important;
-        font-family: 'Inter', sans-serif !important;
+        color: var(--textColor, #e0e0e0) !important;
     }
 
-    /* Spinner di caricamento */
-    .stSpinner > div > div {
-        color: var(--terminal-green) !important;
-    }
-    .stSpinner > div > div > div {
-        border-top-color: var(--terminal-green) !important;
-    }
-
-    /* Box di avviso (info, warning, success) */
+    /* Stili per le box di avviso (info, warning, success) */
     .stAlert {
-        background-color: var(--terminal-accent) !important;
-        border-left: 5px solid var(--terminal-blue) !important;
-        color: #e0e0e0 !important;
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        border-left: 5px solid var(--terminal-blue, #0066ff) !important;
+        color: var(--textColor, #e0e0e0) !important;
     }
-    .stAlert.success { border-left-color: var(--terminal-green) !important; }
-    .stAlert.warning { border-left-color: var(--terminal-orange) !important; }
-    .stAlert.info { border-left-color: var(--terminal-blue) !important; }
+    .stAlert.success { border-left-color: var(--terminal-green, #00ff41) !important; }
+    .stAlert.warning { border-left-color: var(--terminal-orange, #ff6600) !important; }
+    .stAlert.info { border-left-color: var(--terminal-blue, #0066ff) !important; }
 
-    /* Stili per testo specifico */
+    /* Stili per testo specifico (strong, em) */
     strong {
-        color: var(--terminal-orange) !important;
+        color: var(--terminal-orange, #ff6600) !important;
     }
     em {
-        color: var(--terminal-purple) !important;
+        color: var(--terminal-purple, #cc66ff) !important;
     }
+
+    /* Stili per lo spinner di caricamento */
+    .stSpinner > div > div {
+        color: var(--terminal-green, #00ff41) !important;
+    }
+    .stSpinner > div > div > div {
+        border-top-color: var(--terminal-green, #00ff41) !important;
+    }
+
+    /* Stili per il Selectbox */
+    .stSelectbox .st-bb { /* Dropdown arrow */
+        color: var(--terminal-green, #00ff41) !important;
+    }
+    .stSelectbox .st-cc { /* Selected value text */
+        color: var(--textColor, #e0e0e0) !important;
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        border: 1px solid var(--terminal-green, #00ff41) !important;
+    }
+    .stSelectbox .st-cd { /* Dropdown options */
+        background-color: var(--terminal-secondary, #1a1a1a) !important;
+        color: var(--textColor, #e0e0e0) !important;
+        border: 1px solid var(--terminal-green, #00ff41) !important;
+    }
+    .stSelectbox .st-cd:hover {
+        background-color: var(--terminal-accent, #2a2a2a) !important;
+        color: var(--terminal-green, #00ff41) !important;
+    }
+
+    /* Stili per lo Slider */
+    .stSlider .st-bd { /* Track */
+        background: var(--terminal-accent, #2a2a2a) !important;
+    }
+    .stSlider .st-be { /* Fill */
+        background: var(--terminal-green, #00ff41) !important;
+    }
+    .stSlider .st-bf { /* Thumb */
+        background: var(--terminal-blue, #0066ff) !important;
+        border: 2px solid var(--terminal-green, #00ff41) !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -506,16 +479,13 @@ if st.session_state.run_analysis:
                 st.markdown("Questa analisi scompone la serie storica del training set in Trend, Stagionalità e Residuo.")
                 
                 try:
-                    # Ho provato a usare period=7 per la decomposizione, che è più robusto con dataset più corti
-                    # Se il dataset di training è molto corto, anche period=7 potrebbe fallire.
-                    # In un'app reale, si dovrebbe controllare la lunghezza del train_data prima di chiamare seasonal_decompose.
                     if len(df_train_single) < 2 * 7: # Richiede almeno due cicli completi per period=7
                         st.warning("Dati di training insufficienti per una decomposizione stagionale significativa (richiede almeno 14 giorni).")
                     else:
                         result = seasonal_decompose(df_train_single['quantità_vendute'], model='additive', period=7)
                         
                         fig, ax = plt.subplots(4, 1, figsize=(15, 12), sharex=True)
-                        fig.patch.set_facecolor('#0a0a0a')
+                        fig.patch.set_facecolor('rgba(0,0,0,0)') # Sfondo trasparente per Matplotlib
                         
                         # Plot styling
                         styles = [
@@ -534,7 +504,7 @@ if st.session_state.run_analysis:
                             ax[i].spines['right'].set_visible(False)
                             ax[i].spines['left'].set_color('#3a3a3a')
                             ax[i].spines['bottom'].set_color('#3a3a3a')
-                            ax[i].set_facecolor('#1a1a1a')
+                            ax[i].set_facecolor('rgba(10, 10, 10, 0.5)') # Sfondo del grafico interno
                             ax[i].set_xlabel("Data", color='#e0e0e0')
                             
                         fig.tight_layout()
