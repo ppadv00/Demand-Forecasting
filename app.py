@@ -24,6 +24,7 @@ st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <style>
+    /* Definizione delle variabili CSS per il tema terminale */
     :root {
         --terminal-green: #00ff41;
         --terminal-blue: #0066ff;
@@ -34,35 +35,37 @@ st.markdown("""
         --terminal-accent: #2a2a2a;
     }
     
-    body {
-        font-family: 'Inter', sans-serif !important;
+    /* Stili globali per il body e il container principale di Streamlit */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    .stApp {
         background: linear-gradient(135deg, var(--terminal-bg) 0%, #111 50%, var(--terminal-secondary) 100%) !important;
         background-attachment: fixed !important;
         color: #e0e0e0 !important;
+        font-family: 'Inter', sans-serif !important;
         line-height: 1.7 !important;
-        min-height: 100vh !important;
+        padding-top: 2rem !important;
+        padding-right: 2rem !important;
+        padding-left: 2rem !important;
+        padding-bottom: 2rem !important;
     }
     
     .mono {
         font-family: 'JetBrains Mono', monospace !important;
     }
 
-    /* Override Streamlit's main container padding */
-    .stApp {
-        padding-top: 2rem !important;
-        padding-right: 2rem !important;
-        padding-left: 2rem !important;
-        padding-bottom: 2rem !important;
-    }
-
-    /* Headers */
+    /* Intestazioni */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'JetBrains Mono', monospace !important;
         color: var(--terminal-green) !important;
         text-shadow: 0 0 5px rgba(0, 255, 65, 0.3) !important;
     }
 
-    /* Text */
+    /* Testo generale */
     p, .stText, .stMarkdown, label {
         color: #e0e0e0 !important;
     }
@@ -77,7 +80,7 @@ st.markdown("""
         color: var(--terminal-blue) !important;
     }
 
-    /* Buttons */
+    /* Bottoni */
     .stButton>button {
         background-color: var(--terminal-blue) !important;
         color: white !important;
@@ -95,7 +98,7 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(204, 102, 255, 0.5) !important;
     }
 
-    /* Sliders */
+    /* Slider */
     .stSlider .st-bd { /* Track */
         background: var(--terminal-accent) !important;
     }
@@ -126,7 +129,7 @@ st.markdown("""
         color: var(--terminal-green) !important;
     }
 
-    /* Dataframe */
+    /* DataFrame (tabella risultati) */
     .stDataFrame {
         background-color: var(--terminal-bg) !important;
         color: #e0e0e0 !important;
@@ -144,7 +147,7 @@ st.markdown("""
         font-family: 'Inter', sans-serif !important;
     }
 
-    /* Spinner */
+    /* Spinner di caricamento */
     .stSpinner > div > div {
         color: var(--terminal-green) !important;
     }
@@ -152,7 +155,7 @@ st.markdown("""
         border-top-color: var(--terminal-green) !important;
     }
 
-    /* Info/Warning/Success boxes */
+    /* Box di avviso (info, warning, success) */
     .stAlert {
         background-color: var(--terminal-accent) !important;
         border-left: 5px solid var(--terminal-blue) !important;
@@ -162,7 +165,7 @@ st.markdown("""
     .stAlert.warning { border-left-color: var(--terminal-orange) !important; }
     .stAlert.info { border-left-color: var(--terminal-blue) !important; }
 
-    /* General text styling */
+    /* Stili per testo specifico */
     strong {
         color: var(--terminal-orange) !important;
     }
