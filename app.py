@@ -73,9 +73,12 @@ def generate_simulated_dataset(num_days=730, num_products=5):
         
         # Eventi speciali (simulati)
         promotions = np.zeros(num_days)
-        christmas_dates = [d for d in dates if d.month == 12 and d.day > 15]
-        for d in christmas_dates:
-            promotions[dates.get_loc(d)] = 1
+        # Semplificazione per evitare errori di indice con date_range.get_loc
+        # Consideriamo promozioni fisse per semplicità nel dataset simulato
+        promo_days = [30, 90, 180, 270, 360, 450, 540, 630, 720] # Esempio di giorni con promozioni
+        for day_idx in promo_days:
+            if day_idx < num_days:
+                promotions[day_idx] = 1
         promotions_effect = promotions * 100
         
         # Rumore realistico
@@ -101,8 +104,14 @@ def generate_simulated_dataset(num_days=730, num_products=5):
 def create_features(df):
     """
     Crea nuove feature dalla data per catturare pattern temporali.
+    Aggiunge anche un'imputazione semplice per le quantità vendute.
     """
     df_copy = df.copy()
+    
+    # Imputazione dei valori mancanti (se presenti, anche se il simulatore non li crea)
+    if df_copy['quantità_vendute'].isnull().any():
+        df_copy['quantità_vendute'] = df_copy['quantità_vendute'].fillna(df_copy['quantità_vendute'].mean())
+
     df_copy['giorno_della_settimana'] = df_copy.index.weekday
     df_copy['settimana_dell_anno'] = df_copy.index.isocalendar().week.astype(int)
     df_copy['mese'] = df_copy.index.month
@@ -110,13 +119,16 @@ def create_features(df):
     df_copy['anno'] = df_copy.index.year
     df_copy['is_weekend'] = df_copy['giorno_della_settimana'].isin([5, 6]).astype(int)
     
-    # Lag features
+    # Lag features (necessitano di essere calcolate per ogni prodotto se il DF contiene più prodotti)
+    # Assicurati che il dataframe sia già filtrato per singolo prodotto o raggruppa
+    # In questo contesto, df_copy è già per singolo prodotto
     df_copy['vendite_lag_1'] = df_copy['quantità_vendute'].shift(1)
     df_copy['vendite_lag_7'] = df_copy['quantità_vendute'].shift(7)
     
     # Rolling statistics
-    df_copy['media_mobile_7g'] = df_copy['quantità_vendute'].rolling(window=7).mean().shift(1)
+    df_copy['media_mobile_7g'] = df_copy['quantità_vendute'].rolling(window=7, min_periods=1).mean().shift(1)
     
+    # Rimuovi eventuali NaN introdotti dalle lag/rolling features all'inizio della serie
     return df_copy.dropna()
 
 # --- SEZIONE MODELLAZIONE E VALUTAZIONE ---
@@ -132,26 +144,32 @@ def train_and_evaluate_model(model_name, train_data, test_data, features):
     y_test = test_data['quantità_vendute']
     
     if model_name == 'Holt-Winters':
+        # Holt-Winters non usa features esplicite, solo la serie temporale
         fit = ExponentialSmoothing(y_train, seasonal_periods=7, trend='add', seasonal='add').fit()
-        predictions = fit.forecast(len(test_data))
+        predictions = fit.forecast(len(y_test))
     
     elif model_name == 'ARIMA':
         try:
+            # ARIMA non usa features esplicite, solo la serie temporale
             fit = ARIMA(y_train, order=(1,1,1), seasonal_order=(1,1,1,7)).fit()
-            predictions = fit.forecast(len(test_data))
-        except Exception:
-            st.warning(f"ARIMA non è stato addestrato per un errore.")
-            predictions = np.zeros(len(test_data))
+            predictions = fit.forecast(len(y_test))
+        except Exception as e:
+            st.warning(f"ARIMA non è stato addestrato per un errore: {e}. Verranno usate previsioni zero.")
+            predictions = np.zeros(len(y_test))
             
     elif model_name == 'Prophet':
+        # Prophet richiede un DataFrame con colonne 'ds' (data) e 'y' (valore)
         df_prophet_train = train_data.reset_index().rename(columns={'data': 'ds', 'quantità_vendute': 'y'})
         prophet_model = Prophet(weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
         prophet_model.fit(df_prophet_train)
-        future = prophet_model.make_future_dataframe(periods=len(test_data), include_history=False, freq='D')
+        
+        # Prepara il DataFrame futuro per Prophet
+        future = test_data.reset_index().rename(columns={'data': 'ds'})[['ds']]
         prophet_forecast = prophet_model.predict(future)
         predictions = prophet_forecast['yhat'].values
         
-    else:
+    else: # LightGBM e XGBoost
+        # Questi modelli usano le features esplicite
         X_train = train_data[features]
         X_test = test_data[features]
         
@@ -165,12 +183,15 @@ def train_and_evaluate_model(model_name, train_data, test_data, features):
             xgb_model.fit(X_train, y_train)
             predictions = xgb_model.predict(X_test)
             
-    # Calcolo delle metriche
+    # Assicurati che le previsioni non siano negative
     predictions = np.maximum(0, predictions)
+    
+    # Calcolo delle metriche
     metrics = {
         'RMSE': np.sqrt(mean_squared_error(y_test, predictions)),
         'MAE': mean_absolute_error(y_test, predictions),
         'R2': r2_score(y_test, predictions),
+        # Gestione divisione per zero per MAPE
         'MAPE': np.mean(np.abs((y_test - predictions) / y_test)) * 100 if np.all(y_test != 0) else float('inf')
     }
     
@@ -203,12 +224,18 @@ with st.sidebar:
         [f"Prodotto_{i}" for i in range(1, 6)]
     )
     
-    test_days = st.slider("Numero di giorni da prevedere", 30, 90, 30)
+    # Imposta un valore minimo per test_days per garantire dati sufficienti per il training
+    # Ad esempio, se hai 730 giorni di dati, e vuoi almeno 365 giorni per il training,
+    # il massimo test_days sarà 730 - 365 = 365.
+    # Il dataset simulato ha 730 giorni.
+    # Assicurati che ci siano almeno 100 giorni per il training.
+    max_test_days = 730 - 100 
+    test_days = st.slider("Numero di giorni da prevedere (Test Set)", 30, max_test_days, 30)
     
     st.markdown("---")
     st.header("📊 Parametri Economici")
     unit_margin = st.number_input("Margine per Unità Venduta (€)", value=10.0, step=0.5)
-    overstock_daily_cost = st.number_input("Costo Mantenimento Magazzino (€/unità)", value=0.5, step=0.1)
+    overstock_daily_cost = st.number_input("Costo Mantenimento Magazzino (€/unità/giorno)", value=0.5, step=0.1)
 
     # Bottone di avvio
     st.markdown("---")
@@ -226,141 +253,195 @@ if st.session_state.run_analysis:
     df = generate_simulated_dataset()
     df_single = df[df['nome_prodotto'] == selected_product_name].copy()
     
+    # --- DEBUG: Controlla il dataframe iniziale filtrato ---
+    # st.write("### Debug: df_single (dopo filtro prodotto)")
+    # st.write(df_single.head())
+    # st.write(f"Dimensioni df_single: {df_single.shape}")
+    # st.write(f"Valori NaN in df_single['quantità_vendute']: {df_single['quantità_vendute'].isnull().sum()}")
+
     # Split training/testing
-    train_end_date = df_single.index[-1] - pd.Timedelta(days=test_days)
-    df_train_single = df_single.loc[:train_end_date].copy()
-    df_test_single = df_single.loc[train_end_date + pd.Timedelta(days=1):].copy()
+    # Assicurati che train_end_date sia valido
+    if df_single.empty:
+        st.error("Il dataset per il prodotto selezionato è vuoto. Controlla la selezione del prodotto o il dataset.")
+        st.session_state.run_analysis = False
+    else:
+        train_end_date = df_single.index.max() - pd.Timedelta(days=test_days)
+        
+        df_train_single = df_single.loc[df_single.index <= train_end_date].copy()
+        df_test_single = df_single.loc[df_single.index > train_end_date].copy()
 
-    # Feature Engineering
-    df_with_features = create_features(df_single)
-    features_to_use = [
-        'giorno_della_settimana', 'settimana_dell_anno', 'mese', 'is_weekend', 
-        'vendite_lag_1', 'vendite_lag_7', 'media_mobile_7g'
-    ]
-    
-    df_train_with_features = df_with_features.loc[:train_end_date]
-    df_test_with_features = df_with_features.loc[train_end_date + pd.Timedelta(days=1):]
+        # --- DEBUG: Controlla i dataframe di train/test dopo lo split ---
+        # st.write("### Debug: df_train_single (dopo split)")
+        # st.write(df_train_single.head())
+        # st.write(f"Dimensioni df_train_single: {df_train_single.shape}")
+        # st.write("### Debug: df_test_single (dopo split)")
+        # st.write(df_test_single.head())
+        # st.write(f"Dimensioni df_test_single: {df_test_single.shape}")
 
-    models = ["Holt-Winters", "ARIMA", "Prophet", "LightGBM", "XGBoost"]
-    results = []
-    predictions_dict = {}
-    prophet_forecast_dict = {}
+        if df_train_single.empty or df_test_single.empty:
+            st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare la 'Data di Split' o il 'Numero di giorni da prevedere'.")
+            st.session_state.run_analysis = False
+        else:
+            # Feature Engineering
+            # Applica feature engineering solo al dataframe completo e poi risplitta
+            df_with_features = create_features(df_single)
+            
+            # Ora risplitta il dataframe con le features
+            df_train_with_features = df_with_features.loc[df_with_features.index <= train_end_date].copy()
+            df_test_with_features = df_with_features.loc[df_with_features.index > train_end_date].copy()
 
-    # Esecuzione dei modelli
-    with st.spinner("Addestramento e valutazione dei modelli..."):
-        for model_name in models:
-            if model_name in ["LightGBM", "XGBoost"]:
-                metrics, predictions, _, prophet_forecast = train_and_evaluate_model(
-                    model_name, df_train_with_features, df_test_with_features, features_to_use
-                )
+            # --- DEBUG: Controlla i dataframe con features ---
+            # st.write("### Debug: df_train_with_features")
+            # st.write(df_train_with_features.head())
+            # st.write(f"Dimensioni df_train_with_features: {df_train_with_features.shape}")
+            # st.write("### Debug: df_test_with_features")
+            # st.write(df_test_with_features.head())
+            # st.write(f"Dimensioni df_test_with_features: {df_test_with_features.shape}")
+
+
+            # Assicurati che i dataframe con features non siano vuoti dopo il dropna
+            if df_train_with_features.empty or df_test_with_features.empty:
+                st.error("I dataset di training o di test con features sono vuoti. Questo può accadere se ci sono troppi NaN all'inizio della serie dopo la creazione delle features. Prova a usare un periodo di training più lungo o un dataset più grande.")
+                st.session_state.run_analysis = False
             else:
-                metrics, predictions, _, prophet_forecast = train_and_evaluate_model(
-                    model_name, df_train_single, df_test_single, []
+                features_to_use = [
+                    'giorno_della_settimana', 'settimana_dell_anno', 'mese', 'is_weekend', 
+                    'vendite_lag_1', 'vendite_lag_7', 'media_mobile_7g'
+                ]
+                # Filtra le features_to_use per assicurarci che esistano nel dataframe
+                # Questo è cruciale se il dataset simulato non crea tutte le colonne che ci aspettiamo
+                available_features = [f for f in features_to_use if f in df_train_with_features.columns]
+
+
+                models = ["Holt-Winters", "ARIMA", "Prophet", "LightGBM", "XGBoost"]
+                results = []
+                predictions_dict = {}
+                prophet_forecast_dict = {}
+
+                # Esecuzione dei modelli
+                with st.spinner("Addestramento e valutazione dei modelli..."):
+                    for model_name in models:
+                        # Passa il dataframe corretto (con o senza features) a seconda del modello
+                        if model_name in ["LightGBM", "XGBoost"]:
+                            metrics, predictions, prophet_forecast = train_and_evaluate_model(
+                                model_name, df_train_with_features, df_test_with_features, available_features
+                            )
+                        else: # Holt-Winters, ARIMA, Prophet
+                            metrics, predictions, prophet_forecast = train_and_evaluate_model(
+                                model_name, df_train_single, df_test_single, [] # Non usano features esplicite
+                            )
+
+                        total_cost, _, _ = calculate_business_impact(
+                            predictions, df_test_single['quantità_vendute'].values, unit_margin, overstock_daily_cost
+                        )
+                        
+                        results.append({
+                            "Modello": model_name,
+                            "RMSE": metrics['RMSE'],
+                            "MAE": metrics['MAE'],
+                            "R2": metrics['R2'],
+                            "Costo Totale (€)": total_cost
+                        })
+                        predictions_dict[model_name] = predictions
+                        if prophet_forecast is not None:
+                            prophet_forecast_dict[model_name] = prophet_forecast
+
+                results_df = pd.DataFrame(results).set_index("Modello")
+                
+                st.success("Analisi completata!")
+
+                # --- SEZIONE RISULTATI E GRAFICI ---
+                
+                st.header("🔍 Confronto Risultati")
+                st.markdown("Questa tabella riassume le performance di ogni modello in termini di metriche statistiche e costo economico.")
+                st.dataframe(results_df.style.background_gradient(cmap='viridis', subset=['RMSE', 'MAE', 'Costo Totale (€)'], axis=0).highlight_max(axis=0, subset=['R2'], color='green'))
+
+                st.markdown("---")
+
+                st.header("📊 Previsioni vs. Valori Reali")
+                st.markdown("Questo grafico visualizza il confronto tra le vendite reali e le previsioni di ogni modello nel periodo di test.")
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df_test_single.index, y=df_test_single['quantità_vendute'], mode='lines', name='Valori Reali', line=dict(color='#0066ff', width=3)))
+                
+                colors = ['#ff6b9d', '#c3e88d', '#fab387', '#89dceb', '#cc66ff']
+                
+                for i, (model_name, predictions) in enumerate(predictions_dict.items()):
+                    fig.add_trace(go.Scatter(x=df_test_single.index, y=predictions, mode='lines', name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
+
+                if 'Prophet' in prophet_forecast_dict:
+                    prophet_forecast = prophet_forecast_dict['Prophet']
+                    fig.add_trace(go.Scatter(
+                        x=df_test_single.index,
+                        y=prophet_forecast['yhat_lower'].values,
+                        line=dict(width=0),
+                        mode='lines',
+                        marker=dict(color="#444"),
+                        showlegend=False
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=df_test_single.index,
+                        y=prophet_forecast['yhat_upper'].values,
+                        fill='tonexty',
+                        fillcolor='rgba(108, 112, 134, 0.2)',
+                        line=dict(width=0),
+                        mode='lines',
+                        marker=dict(color="#444"),
+                        name='Intervallo di Confidenza Prophet'
+                    ))
+
+                fig.update_layout(
+                    title_text=f"Previsioni vs. Valori Reali per {selected_product_name}",
+                    template="plotly_dark",
+                    xaxis_title="Data",
+                    yaxis_title="Quantità Vendute",
+                    font=dict(color='#e0e0e0'),
+                    legend=dict(x=1.02, y=1, bgcolor='rgba(42, 42, 42, 0.5)', bordercolor='#00ff41', borderwidth=1),
+                    plot_bgcolor='rgba(10, 10, 10, 0.5)',
+                    paper_bgcolor='rgba(10, 10, 10, 0.5)',
                 )
+                st.plotly_chart(fig, use_container_width=True)
 
-            total_cost, _, _ = calculate_business_impact(
-                predictions, df_test_single['quantità_vendute'].values, unit_margin, overstock_daily_cost
-            )
-            
-            results.append({
-                "Modello": model_name,
-                "RMSE": metrics['RMSE'],
-                "MAE": metrics['MAE'],
-                "R2": metrics['R2'],
-                "Costo Totale (€)": total_cost
-            })
-            predictions_dict[model_name] = predictions
-            if prophet_forecast is not None:
-                prophet_forecast_dict[model_name] = prophet_forecast
+                st.markdown("---")
 
-    results_df = pd.DataFrame(results).set_index("Modello")
-    
-    st.success("Analisi completata!")
-
-    # --- SEZIONE RISULTATI E GRAFICI ---
-    
-    st.header("🔍 Confronto Risultati")
-    st.markdown("Questa tabella riassume le performance di ogni modello in termini di metriche statistiche e costo economico.")
-    st.dataframe(results_df.style.background_gradient(cmap='viridis', subset=['RMSE', 'MAE', 'Costo Totale (€)'], axis=0).highlight_max(axis=0, subset=['R2'], color='green'))
-
-    st.markdown("---")
-
-    st.header("📊 Previsioni vs. Valori Reali")
-    st.markdown("Questo grafico visualizza il confronto tra le vendite reali e le previsioni di ogni modello nel periodo di test.")
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_test_single.index, y=df_test_single['quantità_vendute'], mode='lines', name='Valori Reali', line=dict(color='#0066ff', width=3)))
-    
-    colors = ['#ff6b9d', '#c3e88d', '#fab387', '#89dceb', '#cc66ff']
-    
-    for i, (model_name, predictions) in enumerate(predictions_dict.items()):
-        fig.add_trace(go.Scatter(x=df_test_single.index, y=predictions, mode='lines', name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
-
-    if 'Prophet' in prophet_forecast_dict:
-        prophet_forecast = prophet_forecast_dict['Prophet']
-        fig.add_trace(go.Scatter(
-            x=df_test_single.index,
-            y=prophet_forecast['yhat_lower'].values,
-            line=dict(width=0),
-            mode='lines',
-            marker=dict(color="#444"),
-            showlegend=False
-        ))
-        fig.add_trace(go.Scatter(
-            x=df_test_single.index,
-            y=prophet_forecast['yhat_upper'].values,
-            fill='tonexty',
-            fillcolor='rgba(108, 112, 134, 0.2)',
-            line=dict(width=0),
-            mode='lines',
-            marker=dict(color="#444"),
-            name='Intervallo di Confidenza Prophet'
-        ))
-
-    fig.update_layout(
-        title_text=f"Previsioni vs. Valori Reali per {selected_product_name}",
-        template="plotly_dark",
-        xaxis_title="Data",
-        yaxis_title="Quantità Vendute",
-        font=dict(color='#e0e0e0'),
-        legend=dict(x=1.02, y=1, bgcolor='rgba(42, 42, 42, 0.5)', bordercolor='#00ff41', borderwidth=1),
-        plot_bgcolor='rgba(10, 10, 10, 0.5)',
-        paper_bgcolor='rgba(10, 10, 10, 0.5)',
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-
-    st.header("📊 Decomposizione della Serie Storica")
-    st.markdown("Questa analisi scompone la serie storica del training set in Trend, Stagionalità e Residuo.")
-    
-    try:
-        result = seasonal_decompose(df_train_single['quantità_vendute'], model='additive', period=7)
-        
-        fig, ax = plt.subplots(4, 1, figsize=(15, 12), sharex=True)
-        fig.patch.set_facecolor('#0a0a0a')
-        
-        # Plot styling
-        styles = [
-            {'color': '#0066ff', 'label': 'Originale'},
-            {'color': '#ff6600', 'label': 'Trend'},
-            {'color': '#cc66ff', 'label': 'Stagionalità'},
-            {'color': '#00ff41', 'label': 'Residuo'}
-        ]
-        
-        for i, (plot_data, style) in enumerate(zip([result.observed, result.trend, result.seasonal, result.resid], styles)):
-            plot_data.plot(ax=ax[i], legend=False, color=style['color'])
-            ax[i].set_ylabel(style['label'], fontsize=12, color=style['color'])
-            ax[i].tick_params(axis='x', colors='#e0e0e0')
-            ax[i].tick_params(axis='y', colors='#e0e0e0')
-            ax[i].spines['top'].set_visible(False)
-            ax[i].spines['right'].set_visible(False)
-            ax[i].spines['left'].set_color('#3a3a3a')
-            ax[i].spines['bottom'].set_color('#3a3a3a')
-            ax[i].set_facecolor('#1a1a1a')
-            ax[i].set_xlabel("Data", color='#e0e0e0')
-            
-        fig.tight_layout()
-        st.pyplot(fig)
-    except Exception as e:
-        st.warning(f"Impossibile eseguire la decomposizione. Errore: {e}")
+                st.header("📊 Decomposizione della Serie Storica")
+                st.markdown("Questa analisi scompone la serie storica del training set in Trend, Stagionalità e Residuo.")
+                
+                try:
+                    # Ho provato a usare period=7 per la decomposizione, che è più robusto con dataset più corti
+                    # Se il dataset di training è molto corto, anche period=7 potrebbe fallire.
+                    # In un'app reale, si dovrebbe controllare la lunghezza del train_data prima di chiamare seasonal_decompose.
+                    if len(df_train_single) < 2 * 7: # Richiede almeno due cicli completi per period=7
+                        st.warning("Dati di training insufficienti per una decomposizione stagionale significativa (richiede almeno 14 giorni).")
+                    else:
+                        result = seasonal_decompose(df_train_single['quantità_vendute'], model='additive', period=7)
+                        
+                        fig, ax = plt.subplots(4, 1, figsize=(15, 12), sharex=True)
+                        fig.patch.set_facecolor('#0a0a0a')
+                        
+                        # Plot styling
+                        styles = [
+                            {'color': '#0066ff', 'label': 'Originale'},
+                            {'color': '#ff6600', 'label': 'Trend'},
+                            {'color': '#cc66ff', 'label': 'Stagionalità'},
+                            {'color': '#00ff41', 'label': 'Residuo'}
+                        ]
+                        
+                        for i, (plot_data, style) in enumerate(zip([result.observed, result.trend, result.seasonal, result.resid], styles)):
+                            plot_data.plot(ax=ax[i], legend=False, color=style['color'])
+                            ax[i].set_ylabel(style['label'], fontsize=12, color=style['color'])
+                            ax[i].tick_params(axis='x', colors='#e0e0e0')
+                            ax[i].tick_params(axis='y', colors='#e0e0e0')
+                            ax[i].spines['top'].set_visible(False)
+                            ax[i].spines['right'].set_visible(False)
+                            ax[i].spines['left'].set_color('#3a3a3a')
+                            ax[i].spines['bottom'].set_color('#3a3a3a')
+                            ax[i].set_facecolor('#1a1a1a')
+                            ax[i].set_xlabel("Data", color='#e0e0e0')
+                            
+                        fig.tight_layout()
+                        st.pyplot(fig)
+                except Exception as e:
+                    st.error(f"Errore durante la decomposizione della serie storica: `{e}`. Controlla che i dati siano sufficienti e non contengano valori non numerici.")
+else:
+    st.info("Clicca 'Avvia Analisi' nella sidebar per iniziare.")
