@@ -12,6 +12,8 @@ from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
+from statsmodels.tsa.seasonal import seasonal_decompose # Per la decomposizione
+
 # Importa solo se TensorFlow è installato e necessario
 try:
     from tensorflow.keras.models import Sequential
@@ -19,9 +21,8 @@ try:
     LSTM_AVAILABLE = True
 except ImportError:
     LSTM_AVAILABLE = False
-    st.warning("TensorFlow/Keras non trovato. Il modello LSTM non sarà disponibile.")
+    # st.warning("TensorFlow/Keras non trovato. Il modello LSTM non sarà disponibile.") # Commentato per evitare warning iniziali
 
-from statsmodels.tsa.seasonal import seasonal_decompose # Per la decomposizione
 import warnings
 
 # Ignora i FutureWarning di statsmodels per una pulizia visiva
@@ -273,12 +274,15 @@ def calculate_metrics(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
     
     # Calcolo MAPE, evitando divisione per zero
-    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    # Sostituisci 0 con NaN per evitare RuntimeWarning e poi gestisci i NaN
+    y_true_safe = np.where(y_true == 0, np.nan, y_true)
+    mape = np.nanmean(np.abs((y_true - y_pred) / y_true_safe)) * 100
     mape = mape if np.isfinite(mape) else float('inf') # Gestisce casi di divisione per zero o NaN
     
     r2 = r2_score(y_true, y_pred)
     return {'RMSE': rmse, 'MAE': mae, 'MAPE': mape, 'R2': r2}
 
+@st.cache_data(show_spinner=False) # Nascondi spinner per questa funzione
 def train_and_evaluate_single_model(model_name, train_data, test_data, features):
     """
     Addestra e valuta un singolo modello di previsione.
@@ -292,12 +296,18 @@ def train_and_evaluate_single_model(model_name, train_data, test_data, features)
     y_test = test_data['quantità_vendute']
 
     if model_name == 'Holt-Winters':
+        if len(y_train) < 7: # Holt-Winters necessita di almeno un ciclo stagionale
+            st.warning(f"Dati di training insufficienti per {model_name}. Minimo 7 giorni richiesti.")
+            return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, predictions, None, None
         fit = ExponentialSmoothing(y_train, seasonal_periods=7, trend='add', seasonal='add').fit()
         predictions = fit.forecast(len(y_test))
         model_obj = fit
     
     elif model_name == 'ARIMA':
         try:
+            if len(y_train) < 14: # ARIMA necessita di più dati per convergere
+                st.warning(f"Dati di training insufficienti per {model_name}. Minimo 14 giorni richiesti.")
+                return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, predictions, None, None
             fit = ARIMA(y_train, order=(1, 1, 1), seasonal_order=(1, 1, 1, 7)).fit()
             predictions = fit.forecast(len(y_test))
             model_obj = fit
@@ -307,8 +317,11 @@ def train_and_evaluate_single_model(model_name, train_data, test_data, features)
             
     elif model_name == 'Prophet':
         df_prophet_train = train_data.reset_index().rename(columns={'data': 'ds', 'quantità_vendute': 'y'})
+        if len(df_prophet_train) < 20: # Prophet necessita di un minimo di dati
+            st.warning(f"Dati di training insufficienti per {model_name}. Minimo 20 giorni richiesti.")
+            return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, predictions, None, None
+
         prophet_model = Prophet(weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
-        # Aggiungi regressori solo se esistono nel dataframe
         if 'è_promo' in df_prophet_train.columns: prophet_model.add_regressor('è_promo')
         if 'festivo' in df_prophet_train.columns: prophet_model.add_regressor('festivo')
         prophet_model.fit(df_prophet_train)
@@ -321,36 +334,44 @@ def train_and_evaluate_single_model(model_name, train_data, test_data, features)
         predictions = prophet_forecast['yhat'].values
         model_obj = prophet_model # Per Prophet, l'oggetto è il modello stesso
         
-    elif model_name == 'LightGBM':
+    elif model_name in ['LightGBM', 'XGBoost']:
         X_train_ml, X_test_ml = train_data[features], test_data[features]
-        lgb_model = lgb.LGBMRegressor(random_state=42, verbose=-1, n_estimators=100)
-        lgb_model.fit(X_train_ml, y_train)
-        predictions = lgb_model.predict(X_test_ml)
-        model_obj = lgb_model
+        if X_train_ml.empty or X_test_ml.empty:
+            st.warning(f"Dati di training/test con feature insufficienti per {model_name}.")
+            return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, predictions, None, None
         
-    elif model_name == 'XGBoost':
-        X_train_ml, X_test_ml = train_data[features], test_data[features]
-        xgb_model = xgb.XGBRegressor(random_state=42, verbosity=0, n_estimators=100)
-        xgb_model.fit(X_train_ml, y_train)
-        predictions = xgb_model.predict(X_test_ml)
-        model_obj = xgb_model
+        if model_name == 'LightGBM':
+            lgb_model = lgb.LGBMRegressor(random_state=42, verbose=-1, n_estimators=100)
+            lgb_model.fit(X_train_ml, y_train)
+            predictions = lgb_model.predict(X_test_ml)
+            model_obj = lgb_model
+        
+        elif model_name == 'XGBoost':
+            xgb_model = xgb.XGBRegressor(random_state=42, verbosity=0, n_estimators=100)
+            xgb_model.fit(X_train_ml, y_train)
+            predictions = xgb_model.predict(X_test_ml)
+            model_obj = xgb_model
     
     elif model_name == 'LSTM' and LSTM_AVAILABLE:
         # Preparazione dati per LSTM
         series_lstm_train = y_train.values.reshape(-1, 1)
         scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data_train = scaler.fit_transform(series_lstm_train)
-
-        def create_dataset_lstm(dataset, look_back=7):
-            dataX, dataY = [], []
-            for i in range(len(dataset) - look_back): # Modificato per evitare IndexError
-                dataX.append(dataset[i:(i + look_back), 0])
-                dataY.append(dataset[i + look_back, 0])
-            return np.array(dataX), np.array(dataY)
         
         look_back = 7 # Finestra temporale per LSTM
-        if len(scaled_data_train) > look_back:
+        if len(series_lstm_train) > look_back:
+            scaled_data_train = scaler.fit_transform(series_lstm_train)
+            def create_dataset_lstm(dataset, look_back=7):
+                dataX, dataY = [], []
+                for i in range(len(dataset) - look_back):
+                    dataX.append(dataset[i:(i + look_back), 0])
+                    dataY.append(dataset[i + look_back, 0])
+                return np.array(dataX), np.array(dataY)
+            
             X_lstm_train, y_lstm_train = create_dataset_lstm(scaled_data_train, look_back)
+            if X_lstm_train.shape[0] == 0:
+                st.warning(f"Dati di training insufficienti per {model_name} dopo la creazione del dataset LSTM.")
+                return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, predictions, None, None
+
             X_lstm_train = np.reshape(X_lstm_train, (X_lstm_train.shape[0], 1, X_lstm_train.shape[1]))
             
             model_lstm = Sequential()
@@ -363,12 +384,19 @@ def train_and_evaluate_single_model(model_name, train_data, test_data, features)
             # Previsione per il test set
             predictions_list = []
             # Inizia la previsione dal punto finale del training data
-            current_input = scaled_data_train[-look_back:].reshape(1, 1, look_back)
+            # Assicurati che last_training_data abbia la dimensione corretta
+            if len(scaled_data_train) >= look_back:
+                current_input = scaled_data_train[-look_back:].reshape(1, 1, look_back)
+            else: # Se il training data è troppo corto, non possiamo fare previsioni LSTM
+                st.warning(f"Dati di training troppo corti per iniziare la previsione LSTM.")
+                return {'RMSE': np.inf, 'MAE': np.inf, 'MAPE': np.inf, 'R2': -np.inf}, np.zeros(len(y_test)), None, None
+
 
             for _ in range(len(y_test)):
                 pred = model_lstm.predict(current_input, verbose=0)[0]
                 predictions_list.append(pred)
                 # Aggiorna l'input per la prossima previsione
+                # Assicurati che l'input_test sia sempre di dimensione look_back
                 current_input = np.append(current_input[:, :, 1:], [[pred]], axis=2)
             
             predictions = scaler.inverse_transform(np.array(predictions_list).reshape(-1, 1)).flatten()
@@ -390,19 +418,11 @@ def train_and_evaluate_single_model(model_name, train_data, test_data, features)
 def plot_performance_comparison(results_df):
     """Genera un grafico comparativo delle metriche dei modelli."""
     fig, ax = plt.subplots(figsize=(12, 7))
-    # Usiamo lo stile Streamlit per Matplotlib per coerenza con il tema
-    # plt.style.use('ggplot') # Non usiamo più stili globali qui
     
-    # Prepara i dati per il plot
     metrics_to_plot = ['RMSE', 'MAE', 'MAPE', 'R2']
     plot_df = results_df[metrics_to_plot].copy()
     
-    # Normalizza le metriche per visualizzarle sulla stessa scala (opzionale, ma utile per confronto)
-    # Per R2, vogliamo massimizzare, per gli altri minimizzare.
-    # Quindi invertiamo RMSE, MAE, MAPE per la normalizzazione visiva se necessario.
-    # Per semplicità, plottiamo i valori reali e lasciamo all'utente l'interpretazione.
-
-    plot_df.plot(kind='bar', ax=ax, colormap='viridis', alpha=0.8) # Usiamo una colormap
+    plot_df.plot(kind='bar', ax=ax, colormap='viridis', alpha=0.8)
     
     ax.set_title('Confronto delle Performance dei Modelli', fontsize=16, color=st.get_option("theme.textColor"))
     ax.set_xlabel('Modelli', fontsize=12, color=st.get_option("theme.textColor"))
@@ -412,17 +432,15 @@ def plot_performance_comparison(results_df):
     ax.set_facecolor(st.get_option("theme.secondaryBackgroundColor")) # Sfondo del plot
     fig.patch.set_facecolor(st.get_option("theme.backgroundColor")) # Sfondo della figura
 
-    # Aggiusta i bordi degli assi
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color(st.get_option("theme.textColor"))
     ax.spines['bottom'].set_color(st.get_option("theme.textColor"))
 
     plt.tight_layout()
-    st.pyplot(fig)
+    return fig # Ritorna la figura per st.pyplot
 
-
-def plot_predictions_vs_actual(df_test, predictions_dict, selected_product_name):
+def plot_predictions_vs_actual(df_test, predictions_dict, selected_product_name, prophet_forecast_data):
     """Genera un grafico delle previsioni vs. valori reali per ogni modello."""
     fig = go.Figure()
     
@@ -431,18 +449,45 @@ def plot_predictions_vs_actual(df_test, predictions_dict, selected_product_name)
                              name='Valori Reali', line=dict(color='#4CAF50', width=3))) # Verde primario
     
     # Colori per le previsioni (possono essere personalizzati)
-    colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A1', '#A133FF'] # Esempio di colori vivaci
+    colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A1', '#A133FF', '#00BCD4'] # Aggiunto un colore per LSTM
     
-    for i, (model_name, predictions) in enumerate(predictions_dict.items()):
-        fig.add_trace(go.Scatter(x=df_test.index, y=predictions, mode='lines', 
-                                 name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
+    model_names_ordered = ["Holt-Winters", "ARIMA", "Prophet", "LightGBM", "XGBoost"]
+    if LSTM_AVAILABLE:
+        model_names_ordered.append("LSTM")
+
+    for i, model_name in enumerate(model_names_ordered):
+        if model_name in predictions_dict:
+            predictions = predictions_dict[model_name]
+            fig.add_trace(go.Scatter(x=df_test.index, y=predictions, mode='lines', 
+                                     name=f'Previsioni {model_name}', line=dict(color=colors[i], dash='dash')))
+    
+    # Intervallo di Confidenza di Prophet
+    if 'Prophet' in prophet_forecast_data:
+        prophet_forecast = prophet_forecast_data['Prophet']
+        fig.add_trace(go.Scatter(
+            x=df_test.index,
+            y=prophet_forecast['yhat_lower'].values,
+            line=dict(width=0),
+            mode='lines',
+            marker=dict(color="#444"),
+            showlegend=False
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_test.index,
+            y=prophet_forecast['yhat_upper'].values,
+            fill='tonexty',
+            fillcolor='rgba(108, 112, 134, 0.2)',
+            line=dict(width=0),
+            mode='lines',
+            marker=dict(color="#444"),
+            name='Intervallo di Confidenza Prophet'
+        ))
             
     fig.update_layout(
         title_text=f'Previsioni vs. Valori Reali per {selected_product_name}',
         xaxis_title='Data',
         yaxis_title='Quantità Vendute',
         hovermode="x unified",
-        # Aggiorna il tema per riflettere il tema chiaro di Streamlit
         template="plotly_white", # Usa un tema chiaro di Plotly
         font=dict(color=st.get_option("theme.textColor")),
         plot_bgcolor=st.get_option("theme.backgroundColor"), # Sfondo del plot
@@ -480,7 +525,6 @@ def plot_feature_importance(model_obj, features):
         ax.set_facecolor(st.get_option("theme.secondaryBackgroundColor")) # Sfondo del plot
         fig.patch.set_facecolor(st.get_option("theme.backgroundColor")) # Sfondo della figura
 
-        # Aggiusta i bordi degli assi
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_color(st.get_option("theme.textColor"))
@@ -532,7 +576,7 @@ def plot_seasonal_decomposition(df_train_single, selected_product_name):
 
 
 # ==============================================================================
-# 4. FUNZIONE PRINCIPALE (MAIN) E LOGICA STREAMLIT
+# 4. FUNZIONE PRINCIPALE (LOGICA STREAMLIT)
 # ==============================================================================
 
 # Inizializzazione dello stato della sessione
@@ -541,108 +585,137 @@ if 'analysis_results' not in st.session_state:
 if 'last_run_params' not in st.session_state:
     st.session_state.last_run_params = {}
 
-# Recupera i parametri dalla sidebar (con chiavi per evitare warning)
-current_product_name = st.session_state.selected_product_sidebar
-current_test_days = st.session_state.test_days_sidebar
-current_unit_margin = st.session_state.unit_margin_sidebar
-current_overstock_daily_cost = st.session_state.overstock_cost_sidebar
-
-# Controlla se i parametri che influenzano l'addestramento sono cambiati
-params_changed = (
-    st.session_state.last_run_params.get('product_name') != current_product_name or
-    st.session_state.last_run_params.get('test_days') != current_test_days
-)
-
-# Se il bottone "Avvia Analisi" è stato cliccato O i parametri chiave sono cambiati,
-# e non ci sono risultati cached, o i parametri chiave sono cambiati
-if st.session_state.run_analysis_button or (params_changed and st.session_state.analysis_results is not None):
-    st.session_state.run_analysis_button = False # Reset del bottone
+# Sidebar per i parametri
+with st.sidebar:
+    st.header("⚙️ Parametri del Modello")
     
-    # Aggiorna i parametri dell'ultima esecuzione
-    st.session_state.last_run_params = {
-        'product_name': current_product_name,
-        'test_days': current_test_days
-    }
+    # Lista delle categorie di prodotto disponibili nel dataset simulato
+    # (assumendo che generate_simulated_dataset crei 'categoria_A', 'categoria_B', ecc.)
+    product_categories_list = [f'categoria_{chr(65 + i)}' for i in range(5)] # 5 categorie A-E
+    selected_product_name = st.selectbox(
+        "Seleziona la Categoria Prodotto da Analizzare",
+        product_categories_list,
+        key="selected_product_sidebar"
+    )
+    
+    # Il dataset simulato ha 730 giorni. Assicurati che ci siano almeno 100 giorni per il training.
+    max_test_days = 730 - 100 
+    test_days = st.slider("Numero di giorni da prevedere (Test Set)", 30, max_test_days, 30, key="test_days_sidebar")
 
-    with st.spinner("Avvio dell'analisi... potrebbe volerci qualche secondo."):
-        df = generate_simulated_dataset()
-        df_single = df[df['categoria_prodotto'] == current_product_name].copy() # Usa categoria_prodotto
+    st.markdown("---")
+    st.header("📊 Parametri Economici")
+    unit_margin = st.number_input("Margine per Unità Venduta (€)", value=10.0, step=0.5, key="unit_margin_sidebar")
+    overstock_daily_cost = st.number_input("Costo Mantenimento Magazzino (€/unità/giorno)", value=0.5, step=0.1, key="overstock_cost_sidebar")
 
+    st.markdown("---")
+    if st.button("Avvia Analisi", key="run_analysis_button"):
+        st.session_state.run_analysis_triggered = True
+        # Memorizza i parametri correnti per il confronto futuro
+        st.session_state.last_selected_product = selected_product_name
+        st.session_state.last_test_days = test_days
+    
+    # Inizializza lo stato se non esiste
+    if 'run_analysis_triggered' not in st.session_state:
+        st.session_state.run_analysis_triggered = False
+    if 'last_selected_product' not in st.session_state:
+        st.session_state.last_selected_product = None
+    if 'last_test_days' not in st.session_state:
+        st.session_state.last_test_days = None
+
+
+# Logica per determinare se l'analisi deve essere eseguita o riutilizzata
+run_analysis_now = False
+if st.session_state.run_analysis_triggered:
+    run_analysis_now = True
+    st.session_state.run_analysis_triggered = False # Reset per evitare re-run non voluti
+
+# Se i parametri chiave sono cambiati, forza un re-run dell'analisi al prossimo click
+if (st.session_state.last_selected_product != selected_product_name or 
+    st.session_state.last_test_days != test_days):
+    st.session_state.analysis_results = None # Invalida i risultati precedenti se i parametri chiave cambiano
+
+
+# Esegui l'analisi solo se è stata triggerata o se non ci sono risultati in session_state
+if run_analysis_now or st.session_state.analysis_results is None:
+    if run_analysis_now: # Mostra lo spinner solo se si sta effettivamente eseguendo l'analisi
+        st.info("Avvio dell'analisi... potrebbe volerci qualche secondo.")
+    
+    df = generate_simulated_dataset()
+    df_single = df[df['categoria_prodotto'] == selected_product_name].copy()
+
+    if df_single.empty:
+        st.error("Il dataset per la categoria di prodotto selezionata è vuoto. Controlla la selezione o il generatore di dati.")
+        st.session_state.analysis_results = None
+    else:
         # Split training/testing
-        if df_single.empty:
-            st.error("Il dataset per il prodotto selezionato è vuoto. Controlla la selezione del prodotto o il dataset.")
+        train_end_date = df_single.index.max() - pd.Timedelta(days=test_days)
+        
+        df_train_single = df_single.loc[df_single.index <= train_end_date].copy()
+        df_test_single = df_single.loc[df_single.index > train_end_date].copy()
+
+        if df_train_single.empty or df_test_single.empty:
+            st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare il 'Numero di giorni da prevedere' o controlla la lunghezza totale del dataset simulato.")
             st.session_state.analysis_results = None
         else:
-            train_end_date = df_single.index.max() - pd.Timedelta(days=current_test_days)
+            df_with_features = feature_engineering(df_single) # Applica feature engineering
             
-            df_train_single = df_single.loc[df_single.index <= train_end_date].copy()
-            df_test_single = df_single.loc[df_single.index > train_end_date].copy()
+            df_train_with_features = df_with_features.loc[df_with_features.index <= train_end_date].copy()
+            df_test_with_features = df_with_features.loc[df_with_features.index > train_end_date].copy()
 
-            if df_train_single.empty or df_test_single.empty:
-                st.error("I dataset di training o di test sono vuoti dopo lo split. Prova a modificare il 'Numero di giorni da prevedere' o controlla la lunghezza totale del dataset simulato.")
+            if df_train_with_features.empty or df_test_with_features.empty:
+                st.error("I dataset di training o di test con features sono vuoti. Questo può accadere se ci sono troppi NaN all'inizio della serie dopo la creazione delle features. Prova a usare un periodo di training più lungo o un dataset più grande.")
                 st.session_state.analysis_results = None
             else:
-                df_with_features = feature_engineering(df_single) # Applica feature engineering
-                
-                df_train_with_features = df_with_features.loc[df_with_features.index <= train_end_date].copy()
-                df_test_with_features = df_with_features.loc[df_with_features.index > train_end_date].copy()
+                features_for_ml_models = [
+                    'giorno_della_settimana', 'settimana_dell_anno', 'mese', 'giorno_dell_anno', 'anno',
+                    'vendite_lag_1', 'vendite_lag_7', 'media_mobile_7g', 'std_mobile_7g',
+                    'variazione_prezzo_7g', 'è_promo', 'festivo', 'stockout', 'impatto_promo_giorno', 'interazione_promo_mese'
+                ]
+                # Filtra le features per assicurarci che esistano nel dataframe
+                available_features = [f for f in features_for_ml_models if f in df_train_with_features.columns]
 
-                if df_train_with_features.empty or df_test_with_features.empty:
-                    st.error("I dataset di training o di test con features sono vuoti. Questo può accadere se ci sono troppi NaN all'inizio della serie dopo la creazione delle features. Prova a usare un periodo di training più lungo o un dataset più grande.")
-                    st.session_state.analysis_results = None
-                else:
-                    features = [
-                        'giorno_della_settimana', 'settimana_dell_anno', 'mese', 'giorno_dell_anno', 'anno',
-                        'vendite_lag_1', 'vendite_lag_7', 'media_mobile_7g', 'std_mobile_7g',
-                        'variazione_prezzo_7g', 'è_promo', 'festivo', 'stockout', 'impatto_promo_giorno', 'interazione_promo_mese'
-                    ]
-                    # Filtra le features_to_use per assicurarci che esistano nel dataframe
-                    available_features = [f for f in features if f in df_train_with_features.columns]
+                models_to_run = ["Holt-Winters", "ARIMA", "Prophet", "LightGBM", "XGBoost"]
+                if LSTM_AVAILABLE:
+                    models_to_run.append("LSTM")
 
-                    models_to_run = ["Holt-Winters", "ARIMA", "Prophet", "LightGBM", "XGBoost"]
-                    if LSTM_AVAILABLE:
-                        models_to_run.append("LSTM")
+                results_metrics = []
+                predictions_dict = {}
+                model_objects = {} # Per salvare gli oggetti modello per feature importance
+                prophet_forecast_data = {} # Per salvare i dati di forecast di Prophet
 
-                    results_metrics = []
-                    predictions_dict = {}
-                    model_objects = {} # Per salvare gli oggetti modello per feature importance
-                    prophet_forecast_data = {} # Per salvare i dati di forecast di Prophet
-
-                    for model_name in models_to_run:
-                        if model_name in ["LightGBM", "XGBoost", "LSTM"]:
-                            metrics, predictions, model_obj, prophet_fc = train_and_evaluate_single_model(
-                                model_name, df_train_with_features, df_test_with_features, available_features
-                            )
-                        else: # Holt-Winters, ARIMA, Prophet
-                            metrics, predictions, model_obj, prophet_fc = train_and_evaluate_single_model(
-                                model_name, df_train_single, df_test_single, []
-                            )
-                        
-                        results_metrics.append({
-                            "Modello": model_name,
-                            "RMSE": metrics['RMSE'],
-                            "MAE": metrics['MAE'],
-                            "MAPE": metrics['MAPE'],
-                            "R2": metrics['R2']
-                        })
-                        predictions_dict[model_name] = predictions
-                        model_objects[model_name] = model_obj
-                        if prophet_fc is not None:
-                            prophet_forecast_data[model_name] = prophet_fc
-
-                    results_df_metrics = pd.DataFrame(results_metrics).set_index("Modello")
+                for model_name in models_to_run:
+                    metrics, predictions, model_obj, prophet_fc = train_and_evaluate_single_model(
+                        model_name, 
+                        df_train_with_features if model_name in ["LightGBM", "XGBoost", "LSTM"] else df_train_single, 
+                        df_test_with_features if model_name in ["LightGBM", "XGBoost", "LSTM"] else df_test_single, 
+                        available_features
+                    )
                     
-                    st.session_state.analysis_results = {
-                        "results_df_metrics": results_df_metrics,
-                        "predictions_dict": predictions_dict,
-                        "model_objects": model_objects,
-                        "df_test_single": df_test_single,
-                        "df_train_single": df_train_single,
-                        "selected_product_name": current_product_name,
-                        "features_for_ml": available_features, # Salva le feature usate per ML
-                        "prophet_forecast_data": prophet_forecast_data
-                    }
-                    st.success("Analisi completata!")
+                    results_metrics.append({
+                        "Modello": model_name,
+                        "RMSE": metrics['RMSE'],
+                        "MAE": metrics['MAE'],
+                        "MAPE": metrics['MAPE'],
+                        "R2": metrics['R2']
+                    })
+                    predictions_dict[model_name] = predictions
+                    model_objects[model_name] = model_obj
+                    if prophet_fc is not None:
+                        prophet_forecast_data[model_name] = prophet_fc
+
+                results_df_metrics = pd.DataFrame(results_metrics).set_index("Modello")
+                
+                st.session_state.analysis_results = {
+                    "results_df_metrics": results_df_metrics,
+                    "predictions_dict": predictions_dict,
+                    "model_objects": model_objects,
+                    "df_test_single": df_test_single,
+                    "df_train_single": df_train_single,
+                    "selected_product_name": selected_product_name,
+                    "features_for_ml": available_features, # Salva le feature usate per ML
+                    "prophet_forecast_data": prophet_forecast_data
+                }
+                st.success("Analisi completata!")
     
 # Visualizzazione dei risultati se disponibili
 if st.session_state.analysis_results is not None:
@@ -684,7 +757,7 @@ if st.session_state.analysis_results is not None:
 
     st.header("📊 Previsioni vs. Valori Reali")
     st.markdown("Questo grafico visualizza il confronto tra le vendite reali e le previsioni di ogni modello nel periodo di test.")
-    plot_predictions_vs_actual(df_test_single, predictions_dict, selected_product_name_display)
+    plot_predictions_vs_actual(df_test_single, predictions_dict, selected_product_name_display, prophet_forecast_data)
 
     st.markdown("---")
 
